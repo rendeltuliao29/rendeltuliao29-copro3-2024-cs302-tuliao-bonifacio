@@ -102,7 +102,9 @@ class SuspensionHandling : CarModule
                 break;
             }
             Console.WriteLine("Invalid input! Choose 1–4.");
+            
         }
+        Console.Clear();
     }
 
     public override void Show()

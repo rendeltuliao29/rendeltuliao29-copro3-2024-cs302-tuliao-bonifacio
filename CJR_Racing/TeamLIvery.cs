@@ -86,7 +86,11 @@ class TeamLivery : CarModule
                 break;
             }
             Console.WriteLine("Invalid choice! Must be 1, 2, or 3.");
+            
         }
+
+        Console.Clear();
+
     }
 
     public override void Show()
@@ -97,6 +101,8 @@ class TeamLivery : CarModule
         Console.WriteLine($"Name       : {Data.Name}");
         Console.WriteLine($"Age        : {Data.Age}");
         Console.WriteLine($"Experience : {Data.Experience}");
+        
+
     }
 
     public override object GetData() => Data;

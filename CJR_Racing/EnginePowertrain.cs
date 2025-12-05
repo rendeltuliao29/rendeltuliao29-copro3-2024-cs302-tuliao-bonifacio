@@ -113,7 +113,9 @@ class EnginePowertrain : CarModule
                 break;
             }
             Console.WriteLine("Invalid input! Choose 1 or 2.");
+            
         }
+        Console.Clear();
     }
         
     public override void Show()

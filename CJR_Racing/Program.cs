@@ -20,52 +20,96 @@ namespace CJR_Racing
 
         public static void ShowMainMenu()
         {
-                string[] options =
-                {
-                "New Game",
-                "Load Game",
-                "Campaign",
-                "Credits",
-                "Exit"
-                };
+            string[] options =
+            {
+            "New Game",
+            "Load Game",
+            "Campaign",
+            "Credits",
+            "Exit"
+        };
 
             int selectedIndex = 0;
             ConsoleKey key;
 
-                do
+            // Traffic light colors
+            ConsoleColor[] trafficColors = { ConsoleColor.Green, ConsoleColor.Red, ConsoleColor.Yellow };
+            int colorIndex = 0;
+
+            do
+            {
+                Console.Clear();
+
+                // Static ASCII title
+                Console.ForegroundColor = ConsoleColor.Yellow;
+
+                string[] titleArt =
                 {
-                        Console.Clear();
-                        Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine("===== CJR RACING =====\n");
-                        Console.ResetColor();
+                    "  ====██████╗  ===██╗██████╗  ===██████╗==█████╗  ██████╗██╗███╗ ==██╗=██████╗",
+                    "=====██╔════╝ ====██║██╔══██╗====██╔══██╗██╔══██╗██╔════╝██║████╗ =██║██╔════╝",
+                    "=====██║       ===██║██████╔╝====██████╔╝███████║██║=====██║██╔██╗=██║██║==███╗",
+                    "=====██║  ===██  =██║██╔══██╗====██╔══██╗██╔══██║██║= ===██║██║╚██╗██║██║===██║",
+                    "=====╚██████╗╚█████╔╝██║==██║====██║==██║██║==██║╚██████╗██║██║=╚████║╚██████╔╝",
+                    " ====╚═════╝=╚════╝ ╚═╝==╚═╝  ==╚═╝==╚═╝╚═╝==╚═╝=╚═════╝╚═╝╚═╝==╚═══╝=╚═════╝",
+                    "",
+                    "█████████████████████████████████████████████████████████████████████████████████████████████████████████",
+                    "      _/      _/    _/_/    _/_/_/  _/      _/    _/      _/  _/_/_/_/  _/      _/  _/    _/",
+                    "     _/_/  _/_/  _/    _/    _/    _/_/    _/    _/_/  _/_/  _/        _/_/    _/  _/    _/",
+                    "    _/  _/  _/  _/_/_/_/    _/    _/  _/  _/    _/  _/  _/  _/_/_/    _/  _/  _/  _/    _/",
+                    "   _/      _/  _/    _/    _/    _/    _/_/    _/      _/  _/        _/    _/_/  _/    _/",
+                    "  _/      _/  _/    _/  _/_/_/  _/      _/    _/      _/  _/_/_/_/  _/      _/    _/_/"
+};
+
+                foreach (string line in titleArt)
+                {
+                    WriteCentered(line);
+                }
+
+                Console.ResetColor();
+
+
+                // Draw menu options with flickering selection
+                int verticalOffset = 18;
+
 
                 for (int i = 0; i < options.Length; i++)
                 {
+                    Console.SetCursorPosition(0, verticalOffset + i);
+
                     if (i == selectedIndex)
                     {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"> {options[i]}");
+                        Console.ForegroundColor = trafficColors[colorIndex];
+                        WriteCentered($"> {options[i]}");
                         Console.ResetColor();
                     }
                     else
                     {
-                        Console.WriteLine($"  {options[i]}");
+                        WriteCentered($"  {options[i]}");
                     }
                 }
 
-                key = Console.ReadKey(true).Key;
+                colorIndex = (colorIndex + 1) % trafficColors.Length;
+                Thread.Sleep(500);
 
-                if (key == ConsoleKey.UpArrow)
+                // Handle key input if pressed
+                if (Console.KeyAvailable)
                 {
-                    selectedIndex--;
-                    if (selectedIndex < 0)
-                    selectedIndex = options.Length - 1;
+                    key = Console.ReadKey(true).Key;
+
+                    if (key == ConsoleKey.UpArrow)
+                    {
+                        selectedIndex--;
+                        if (selectedIndex < 0) selectedIndex = options.Length - 1;
+                    }
+                    else if (key == ConsoleKey.DownArrow)
+                    {
+                        selectedIndex++;
+                        if (selectedIndex >= options.Length) selectedIndex = 0;
+                    }
                 }
-                else if (key == ConsoleKey.DownArrow)
+                else
                 {
-                    selectedIndex++;
-                    if (selectedIndex >= options.Length)
-                    selectedIndex = 0;
+                    key = ConsoleKey.NoName; // Continue loop if no key pressed
                 }
 
             } while (key != ConsoleKey.Enter);
@@ -120,7 +164,13 @@ namespace CJR_Racing
             }
         }
 
-
+        public static void WriteCentered(string text)
+        {
+            int windowWidth = Console.WindowWidth;
+            int leftPadding = Math.Max((windowWidth - text.Length) / 2, 0);
+            Console.SetCursorPosition(leftPadding, Console.CursorTop);
+            Console.WriteLine(text);
+        }
 
         static void StartNewGame()
         {

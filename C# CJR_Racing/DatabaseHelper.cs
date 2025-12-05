@@ -99,7 +99,7 @@ namespace CJR_Racing
             bool found = false;
             while (reader.Read())
             {
-                //table_info returns: cid, name, type, notnull, dflt_value, pk
+                // table_info returns: cid, name, type, notnull, dflt_value, pk
                 var colName = reader.GetString(1);
                 if (string.Equals(colName, column, StringComparison.OrdinalIgnoreCase))
                 {
@@ -226,48 +226,37 @@ namespace CJR_Racing
 
             using var cmd = conn.CreateCommand();
 
-            // List available sessions
-            cmd.CommandText = "SELECT Id, CreatedAt, Name FROM Sessions ORDER BY Id DESC;";
-            var sessions = new System.Collections.Generic.List<(long Id, string CreatedAt, string Name)>();
-            using (var reader = cmd.ExecuteReader())
-            {
-                while (reader.Read())
-                    sessions.Add((reader.GetInt64(0), reader.IsDBNull(1) ? string.Empty : reader.GetString(1), reader.IsDBNull(2) ? string.Empty : reader.GetString(2)));
-            }
-
-            if (sessions.Count == 0)
-                return Array.Empty<CarModule>();
-
-            // Ask user which name to load
             while (true)
             {
+                // Query sessions fresh on each loop iteration so deletes are immediately reflected.
+                cmd.CommandText = "SELECT Id, CreatedAt, Name FROM Sessions ORDER BY Id DESC;";
+                cmd.Parameters.Clear();
+                var sessions = new System.Collections.Generic.List<(long Id, string CreatedAt, string Name)>();
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                        sessions.Add((
+                            reader.GetInt64(0),
+                            reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                            reader.IsDBNull(2) ? string.Empty : reader.GetString(2)
+                        ));
+                }
+
+                if (sessions.Count == 0)
+                    return Array.Empty<CarModule>();
+
                 Console.Clear();
                 Console.WriteLine("Select a saved session to load (enter number), or:");
                 Console.WriteLine("[A] Show all characters (Drivers)");
                 Console.WriteLine("[D] Delete a character (Driver) by Id");
                 Console.WriteLine();
 
-                // re-query sessions each loop to reflect deletes
-                cmd.CommandText = "SELECT Id, CreatedAt, Name FROM Sessions ORDER BY Id DESC;";
-                sessions.Clear();
-                using (var r = cmd.ExecuteReader())
-                {
-                    while (r.Read())
-                        sessions.Add((r.GetInt64(0), r.IsDBNull(1) ? string.Empty : r.GetString(1), r.IsDBNull(2) ? string.Empty : r.GetString(2)));
-                }
-
-                if (sessions.Count == 0)
-                    return Array.Empty<CarModule>();
-
                 for (int i = 0; i < sessions.Count; i++)
                 {
                     var s = sessions[i];
-                    // Prefer saved Name; fall back to CreatedAt; finally fall back to a generic session label.
                     var label = !string.IsNullOrWhiteSpace(s.Name)
                         ? s.Name
-                        : (!string.IsNullOrWhiteSpace(s.CreatedAt) ? s.CreatedAt : $"Session {s.Id}");
-
-                    // Display the label to the user; include internal session id for clarity if needed.
+                        : (!string.IsNullOrWhiteSpace(s.CreatedAt) ? s.CreatedAt : $"Session {s.Id}")
                     Console.WriteLine($"[{i + 1}] {label} (Id: {s.Id})");
                 }
 
@@ -291,8 +280,6 @@ namespace CJR_Racing
                         var name = rdr.IsDBNull(2) ? string.Empty : rdr.GetString(2);
                         var age = rdr.IsDBNull(3) ? 0 : rdr.GetInt32(3);
                         var exp = rdr.IsDBNull(4) ? string.Empty : rdr.GetString(4);
-
-                        // keep raw values
                         rows.Add((id, sid, name, age, exp));
                     }
 
@@ -308,42 +295,7 @@ namespace CJR_Racing
                         continue; // redisplay menu
                     }
 
-                    // Determine column widths (cap name/experience to avoid extremely wide columns)
-                    const int maxNameWidth = 30;
-                    const int maxExpWidth = 40;
-
-                    string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max - 3) + "...";
-
-
-                    // Header
-                    Console.WriteLine(
-                        $"{ "Id".PadLeft(3) }  " +
-                        $"{ "SessionId".PadLeft(9) }  " +
-                        $"{ "Name".PadRight(maxNameWidth) }  " +
-                        $"{ "Age".PadLeft(3) }  " +
-                        $"{ "Experience".PadRight(maxExpWidth) }");
-
-                    // Separator
-                    Console.WriteLine(
-                        $"{ new string('-', 3) }  " +
-                        $"{ new string('-', 9) }  " +
-                        $"{ new string('-', maxNameWidth) }  " +
-                        $"{ new string('-', 3) }  " +
-                        $"{ new string('-', maxExpWidth) }");
-
-                    // Rows
-                    foreach (var r in rows)
-                    {
-                        var nameDisplay = Truncate(r.Name ?? string.Empty, maxNameWidth);
-                        var expDisplay = Truncate(r.Experience ?? string.Empty, maxExpWidth);
-
-                        Console.WriteLine(
-                            $"{ r.Id.ToString().PadLeft(3) }  " +
-                            $"{ r.SessionId.ToString().PadLeft(9) }  " +
-                            $"{ nameDisplay.PadRight(maxNameWidth) }  " +
-                            $"{ r.Age.ToString().PadLeft(3) }  " +
-                            $"{ expDisplay.PadRight(maxExpWidth) }");
-                    }
+                    PrintDrivers(rows);
 
                     Console.WriteLine();
                     Console.WriteLine("Press any key to return to sessions menu...");
@@ -353,7 +305,7 @@ namespace CJR_Racing
 
                 if (string.Equals(input, "D", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Delete a driver by Id with confirmation and session info
+                    // Delete a driver by Id and show the deleted character formatted like "Show all characters"
                     Console.Write("Enter Driver Id to delete: ");
                     var idInput = Console.ReadLine() ?? string.Empty;
                     if (!long.TryParse(idInput.Trim(), out var deleteId))
@@ -363,14 +315,12 @@ namespace CJR_Racing
                         continue;
                     }
 
-                    // Fetch driver info (close reader before starting transaction)
+                    // get full driver row (we'll display this formatted after deletion)
                     cmd.CommandText = "SELECT Id, SessionId, Name, Age, Experience FROM Drivers WHERE Id = $id;";
                     cmd.Parameters.Clear();
                     cmd.Parameters.AddWithValue("$id", deleteId);
-                    long drvSessionId;
-                    string drvName;
-                    int drvAge;
-                    string drvExperience;
+
+                    (long Id, long SessionId, string Name, int Age, string Experience) drvRow;
                     using (var drvReader = cmd.ExecuteReader())
                     {
                         if (!drvReader.Read())
@@ -380,56 +330,20 @@ namespace CJR_Racing
                             continue;
                         }
 
-                        drvSessionId = drvReader.IsDBNull(1) ? 0L : drvReader.GetInt64(1);
-                        drvName = drvReader.IsDBNull(2) ? string.Empty : drvReader.GetString(2);
-                        drvAge = drvReader.IsDBNull(3) ? 0 : drvReader.GetInt32(3);
-                        drvExperience = drvReader.IsDBNull(4) ? string.Empty : drvReader.GetString(4);
+                        var id = drvReader.IsDBNull(0) ? 0L : drvReader.GetInt64(0);
+                        var sid = drvReader.IsDBNull(1) ? 0L : drvReader.GetInt64(1);
+                        var name = drvReader.IsDBNull(2) ? string.Empty : drvReader.GetString(2);
+                        var age = drvReader.IsDBNull(3) ? 0 : drvReader.GetInt32(3);
+                        var exp = drvReader.IsDBNull(4) ? string.Empty : drvReader.GetString(4);
+
+                        drvRow = (id, sid, name, age, exp);
                     }
 
-                    // Print the driver row using the same formatting as "Show all characters"
-                    const int maxNameWidth = 30;
-                    const int maxExpWidth = 40;
-                    string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max - 3) + "...";
-
-
-                    void PrintDriverRow()
-                    {
-                        // Header
-                        Console.WriteLine();
-                        Console.WriteLine(
-                            $"{ "Id".PadLeft(3) }  " +
-                            $"{ "SessionId".PadLeft(9) }  " +
-                            $"{ "Name".PadRight(maxNameWidth) }  " +
-                            $"{ "Age".PadLeft(3) }  " +
-                            $"{ "Experience".PadRight(maxExpWidth) }");
-
-                        // Separator
-                        Console.WriteLine(
-                            $"{ new string('-', 3) }  " +
-                            $"{ new string('-', 9) }  " +
-                            $"{ new string('-', maxNameWidth) }  " +
-                            $"{ new string('-', 3) }  " +
-                            $"{ new string('-', maxExpWidth) }");
-
-                        var nameDisplay = Truncate(drvName ?? string.Empty, maxNameWidth);
-                        var expDisplay = Truncate(drvExperience ?? string.Empty, maxExpWidth);
-
-                        Console.WriteLine(
-                            $"{ deleteId.ToString().PadLeft(3) }  " +
-                            $"{ drvSessionId.ToString().PadLeft(9) }  " +
-                            $"{ nameDisplay.PadRight(maxNameWidth) }  " +
-                            $"{ drvAge.ToString().PadLeft(3) }  " +
-                            $"{ expDisplay.PadRight(maxExpWidth) }");
-                        Console.WriteLine();
-                    }
-
-                    PrintDriverRow();
-
-                    // Fetch session info for clarity
-                    string sessionLabel = $"Session {drvSessionId}";
+                    // fetch session label for confirmation
+                    string sessionLabel = $"Session {drvRow.SessionId}";
                     cmd.CommandText = "SELECT Name, CreatedAt FROM Sessions WHERE Id = $sid;";
                     cmd.Parameters.Clear();
-                    cmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    cmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     using (var sessReader = cmd.ExecuteReader())
                     {
                         if (sessReader.Read())
@@ -440,81 +354,68 @@ namespace CJR_Racing
                         }
                     }
 
-                    // Confirm delete
-                    Console.WriteLine($"You are about to delete the driver shown above and all saved data for session: {sessionLabel}");
+                    Console.WriteLine();
+                    Console.WriteLine($"You are about to delete driver '{drvRow.Name}' (Id: {drvRow.Id}) and the entire save (Session: {sessionLabel})");
                     Console.Write("Confirm delete? (Y/N): ");
-                    var confirm = Console.ReadLine() ?? string.Empty;
-                    if (!string.Equals(confirm.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+                    var confirm = (Console.ReadLine() ?? string.Empty).Trim();
+                    if (!string.Equals(confirm, "Y", StringComparison.OrdinalIgnoreCase))
                     {
                         Console.WriteLine("Delete cancelled. Press any key to return.");
                         Console.ReadKey();
                         continue;
                     }
 
-                    // Use a dedicated command bound to the same connection + transaction for all deletes.
+                    // Delete entire session: all drivers + modules + session row in one transaction
                     using var tx = conn.BeginTransaction();
                     using var deleteCmd = conn.CreateCommand();
                     deleteCmd.Transaction = tx;
 
-                    // Delete the driver row by Id
-                    deleteCmd.CommandText = "DELETE FROM Drivers WHERE Id = $id;";
+                    deleteCmd.CommandText = "DELETE FROM Drivers WHERE SessionId = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$id", deleteId);
-                    var delDriverRow = deleteCmd.ExecuteNonQuery();
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
+                    var delDrivers = deleteCmd.ExecuteNonQuery();
 
-                    if (delDriverRow <= 0)
-                    {
-                        tx.Rollback();
-                        Console.WriteLine($"No driver found with Id {deleteId}.");
-                        Console.WriteLine("Press any key to return to sessions menu...");
-                        Console.ReadKey();
-                        continue;
-                    }
-
-                    // Also remove all module rows and session row for the same SessionId
                     deleteCmd.CommandText = "DELETE FROM Aerodynamics WHERE SessionId = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     var delAero = deleteCmd.ExecuteNonQuery();
 
                     deleteCmd.CommandText = "DELETE FROM Engine WHERE SessionId = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     var delEngine = deleteCmd.ExecuteNonQuery();
 
                     deleteCmd.CommandText = "DELETE FROM Wheels WHERE SessionId = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     var delWheels = deleteCmd.ExecuteNonQuery();
 
                     deleteCmd.CommandText = "DELETE FROM Suspension WHERE SessionId = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     var delSuspension = deleteCmd.ExecuteNonQuery();
 
                     deleteCmd.CommandText = "DELETE FROM Brakes WHERE SessionId = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     var delBrakes = deleteCmd.ExecuteNonQuery();
 
                     deleteCmd.CommandText = "DELETE FROM Sessions WHERE Id = $sid;";
                     deleteCmd.Parameters.Clear();
-                    deleteCmd.Parameters.AddWithValue("$sid", drvSessionId);
+                    deleteCmd.Parameters.AddWithValue("$sid", drvRow.SessionId);
                     var delSession = deleteCmd.ExecuteNonQuery();
 
                     tx.Commit();
 
+                    // Display deleted character using the same neat table layout as "Show all characters"
                     Console.WriteLine();
-                    Console.WriteLine(delDriverRow > 0 ? "Deleted driver:" : $"No driver found with Id {deleteId}.");
-                    if (delDriverRow > 0)
-                    {
-                        // Show the same formatted row after deletion for clarity
-                        PrintDriverRow();
-                    }
+                    Console.WriteLine("Deleted character:");
+                    PrintDrivers(new System.Collections.Generic.List<(long, long, string, int, string)>() { drvRow });
 
+                    Console.WriteLine();
                     Console.WriteLine("Press any key to return to sessions menu...");
                     Console.ReadKey();
-                    continue; // redisplay menu
+                    continue; // sessions are re-queried at loop top
                 }
 
                 // numeric choice => attempt to parse and return selected session modules
@@ -616,7 +517,7 @@ namespace CJR_Racing
                         new Aerodynamics(fw, rw, drs, df, wa),
                         new EnginePowertrain(et, ep, tr, em, eb),
                         new WheelAndTire(tc, tp),
-                        new SuspensionHandling(st, sl, se, rh, ca), // Updated to reflect changes
+                        new SuspensionHandling(st, sl, se, rh, ca),
                         new BrakingSystem(bt, bl, ab)
                     };
 
@@ -625,6 +526,45 @@ namespace CJR_Racing
 
                 Console.WriteLine("Invalid choice. Press any key to try again.");
                 Console.ReadKey();
+            }
+        }
+
+        // Helper to print drivers in the same neat table as "Show all characters"
+        private static void PrintDrivers(System.Collections.Generic.IEnumerable<(long Id, long SessionId, string Name, int Age, string Experience)> rows)
+        {
+            const int maxNameWidth = 30;
+            const int maxExpWidth = 40;
+            string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max - 3) + "...";
+
+
+            // Header
+            Console.WriteLine(
+                $"{ "Id".PadLeft(3) }  " +
+                $"{ "SessionId".PadLeft(9) }  " +
+                $"{ "Name".PadRight(maxNameWidth) }  " +
+                $"{ "Age".PadLeft(3) }  " +
+                $"{ "Experience".PadRight(maxExpWidth) }");
+
+            // Separator
+            Console.WriteLine(
+                $"{ new string('-', 3) }  " +
+                $"{ new string('-', 9) }  " +
+                $"{ new string('-', maxNameWidth) }  " +
+                $"{ new string('-', 3) }  " +
+                $"{ new string('-', maxExpWidth) }");
+
+            // Rows
+            foreach (var r in rows)
+            {
+                var nameDisplay = Truncate(r.Name ?? string.Empty, maxNameWidth);
+                var expDisplay = Truncate(r.Experience ?? string.Empty, maxExpWidth);
+
+                Console.WriteLine(
+                    $"{ r.Id.ToString().PadLeft(3) }  " +
+                    $"{ r.SessionId.ToString().PadLeft(9) }  " +
+                    $"{ nameDisplay.PadRight(maxNameWidth) }  " +
+                    $"{ r.Age.ToString().PadLeft(3) }  " +
+                    $"{ expDisplay.PadRight(maxExpWidth) }");
             }
         }
     }

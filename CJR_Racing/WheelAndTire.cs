@@ -59,6 +59,8 @@ class WheelAndTire : CarModule
             Console.WriteLine("Invalid PSI! Must be between 10–25.");
         }
         this.Data.TirePressure = tirePressure;
+
+        Console.Clear();
     }
 
     public override void Configure() => Configure(0, 0);
